@@ -1,0 +1,12 @@
+.git
+.idea
+.mvn
+target
+.env
+.env.*
+*.iml
+*.log
+.DS_Store
+README.md
+db.sql
+render.yaml

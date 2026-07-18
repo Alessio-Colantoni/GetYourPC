@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Cerca e pubblica PC usati vicino a te">
+    <title>GetYourPC</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="app" v-cloak>
+    <header class="site-header">
+        <button class="brand" @click="go('home')" aria-label="Vai alla home">
+            <span class="brand-mark">G</span><span>GetYourPC</span>
+        </button>
+        <nav aria-label="Navigazione principale">
+            <button :class="{active: page === 'search'}" @click="go('search')">Cerca PC</button>
+            <button v-if="!user || isUser" :class="{active: page === 'sell'}" @click="openSell">Vendi</button>
+            <button v-if="isUser" :class="{active: page === 'mine'}" @click="openMyListings">I miei annunci</button>
+            <button v-if="isReviewer" :class="{active: page === 'review'}" @click="openReview">Revisione</button>
+            <button v-if="isAdmin" :class="{active: page === 'admin'}" @click="go('admin')">Amministrazione</button>
+            <button v-if="user" :class="{active: page === 'account'}" @click="go('account')">Profilo</button>
+            <button v-if="!user" :class="{active: page === 'login'}" @click="go('login')">Accedi</button>
+            <button v-if="!user" :class="{active: page === 'register'}" @click="go('register')">Registrati</button>
+            <button v-else class="user-button" :disabled="busy" @click="logout">{{ user.name }} · Esci</button>
+        </nav>
+    </header>
+
+    <main>
+        <section v-if="page === 'home'" class="hero">
+            <div>
+                <p class="eyebrow">Tecnologia che cambia mano.</p>
+                <h1>Il prossimo computer potrebbe essere molto più vicino di quanto pensi.</h1>
+                <p class="hero-copy">Trova il PC che fa per te, oppure pubblica il tuo annuncio in pochi passaggi.</p>
+                <div class="actions">
+                    <button class="primary" @click="go('search')">Trova un PC</button>
+                    <button class="secondary" @click="openSell">Pubblica un annuncio</button>
+                </div>
+            </div>
+            <div class="hero-card" aria-hidden="true">
+                <div class="screen"><span>GET</span><strong>YOUR</strong><span>PC</span></div>
+                <div class="stand"></div>
+            </div>
+        </section>
+
+        <section v-if="page === 'login'" class="panel narrow">
+            <p class="eyebrow">Area personale</p>
+            <h1>Accedi</h1>
+            <form @submit.prevent="login">
+                <label>Email<input v-model.trim="loginForm.email" type="email" autocomplete="email" required></label>
+                <label>Password<input v-model="loginForm.password" type="password" autocomplete="current-password" required></label>
+                <button class="primary full" :disabled="busy">{{ busy ? 'Accesso…' : 'Accedi' }}</button>
+            </form>
+            <div class="auth-links">
+                <button class="secondary" @click="go('forgot-password')">Password dimenticata</button>
+                <button class="secondary" @click="go('register')">Crea un account</button>
+            </div>
+        </section>
+
+        <section v-if="page === 'register'" class="panel narrow">
+            <p class="eyebrow">Nuovo account</p>
+            <h1>Registrati</h1>
+            <form v-if="registrationStep === 'details'" @submit.prevent="startRegistration">
+                <div class="two-columns">
+                    <label>Nome<input v-model.trim="registerForm.name" autocomplete="given-name" maxlength="255" required></label>
+                    <label>Cognome<input v-model.trim="registerForm.surname" autocomplete="family-name" maxlength="255" required></label>
+                </div>
+                <label>Email<input v-model.trim="registerForm.email" type="email" autocomplete="email" maxlength="255" required></label>
+                <label>Password<input v-model="registerForm.password" type="password" autocomplete="new-password" minlength="8" maxlength="72" required><small>Almeno 8 caratteri</small></label>
+                <label>Conferma password<input v-model="registerForm.passwordConfirmation" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
+                <button class="primary full" :disabled="busy">{{ busy ? 'Invio…' : 'Invia il codice' }}</button>
+            </form>
+            <form v-else @submit.prevent="confirmRegistration">
+                <p class="verification-note">Abbiamo inviato un codice di 5 cifre a <strong>{{ registerForm.email }}</strong>.</p>
+                <label>Codice<input v-model.trim="registerForm.code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{5}" maxlength="5" required></label>
+                <button class="primary full" :disabled="busy">{{ busy ? 'Verifica…' : 'Completa la registrazione' }}</button>
+                <button type="button" class="secondary full" :disabled="busy" @click="registrationStep = 'details'">Modifica i dati</button>
+            </form>
+        </section>
+
+        <section v-if="page === 'forgot-password'" class="panel narrow">
+            <p class="eyebrow">Recupero account</p>
+            <h1>Nuova password</h1>
+            <form v-if="forgotPasswordStep === 'email'" @submit.prevent="startForgotPassword">
+                <label>Email<input v-model.trim="forgotPasswordForm.email" type="email" autocomplete="email" maxlength="255" required></label>
+                <button class="primary full" :disabled="busy">{{ busy ? 'Invio…' : 'Invia il codice' }}</button>
+            </form>
+            <form v-else @submit.prevent="confirmForgotPassword">
+                <p class="verification-note">Se l’account esiste, il codice è stato inviato a <strong>{{ forgotPasswordForm.email }}</strong>.</p>
+                <label>Codice<input v-model.trim="forgotPasswordForm.code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{5}" maxlength="5" required></label>
+                <label>Nuova password<input v-model="forgotPasswordForm.newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" required><small>Almeno 8 caratteri</small></label>
+                <label>Conferma password<input v-model="forgotPasswordForm.passwordConfirmation" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
+                <button class="primary full" :disabled="busy">{{ busy ? 'Aggiornamento…' : 'Cambia password' }}</button>
+                <button type="button" class="secondary full" :disabled="busy" @click="forgotPasswordStep = 'email'">Torna indietro</button>
+            </form>
+        </section>
+
+        <section v-if="page === 'account'" class="account-grid">
+            <template v-if="user">
+                <div class="panel account-card">
+                    <p class="eyebrow">Dati personali</p><h1>Modifica profilo</h1>
+                    <form @submit.prevent="updateProfile">
+                        <div class="two-columns">
+                            <label>Nome<input v-model.trim="profileForm.name" autocomplete="given-name" maxlength="255" required></label>
+                            <label>Cognome<input v-model.trim="profileForm.surname" autocomplete="family-name" maxlength="255" required></label>
+                        </div>
+                        <label>Telefono <span class="optional">opzionale</span><input v-model.trim="profileForm.phone" type="tel" autocomplete="tel" maxlength="32" placeholder="+39 333 1234567"></label>
+                        <button class="primary full" :disabled="busy">{{ busy ? 'Salvataggio…' : 'Salva dati' }}</button>
+                    </form>
+                </div>
+                <div class="panel account-card">
+                    <p class="eyebrow">Sicurezza</p><h1>Cambia password</h1>
+                    <form v-if="passwordChangeStep === 'request'" @submit.prevent="startPasswordChange">
+                        <label>Password attuale<input v-model="passwordChangeForm.currentPassword" type="password" autocomplete="current-password" maxlength="72" required></label>
+                        <button class="primary full" :disabled="busy">{{ busy ? 'Invio…' : 'Invia il codice' }}</button>
+                    </form>
+                    <form v-else @submit.prevent="confirmPasswordChange">
+                        <p class="verification-note">Inserisci il codice ricevuto su <strong>{{ user.email }}</strong>.</p>
+                        <label>Codice<input v-model.trim="passwordChangeForm.code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{5}" maxlength="5" required></label>
+                        <label>Nuova password<input v-model="passwordChangeForm.newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
+                        <label>Conferma password<input v-model="passwordChangeForm.passwordConfirmation" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
+                        <button class="primary full" :disabled="busy">{{ busy ? 'Aggiornamento…' : 'Cambia password' }}</button>
+                    </form>
+                </div>
+                <div class="panel account-card">
+                    <p class="eyebrow">Profilo</p><h1>Cambia email</h1>
+                    <p class="verification-note">Email attuale: <strong>{{ user.email }}</strong></p>
+                    <form v-if="emailChangeStep === 'request'" @submit.prevent="startEmailChange">
+                        <label>Nuova email<input v-model.trim="emailChangeForm.newEmail" type="email" autocomplete="email" maxlength="255" required></label>
+                        <label>Password attuale<input v-model="emailChangeForm.currentPassword" type="password" autocomplete="current-password" maxlength="72" required></label>
+                        <button class="primary full" :disabled="busy">{{ busy ? 'Invio…' : 'Invia il codice' }}</button>
+                    </form>
+                    <form v-else @submit.prevent="confirmEmailChange">
+                        <p class="verification-note">Inserisci il codice inviato a <strong>{{ emailChangeForm.newEmail }}</strong>.</p>
+                        <label>Codice<input v-model.trim="emailChangeForm.code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{5}" maxlength="5" required></label>
+                        <button class="primary full" :disabled="busy">{{ busy ? 'Aggiornamento…' : 'Conferma la nuova email' }}</button>
+                    </form>
+                </div>
+                <div class="panel account-card danger-card">
+                    <p class="eyebrow">Zona pericolosa</p><h1>Elimina account</h1>
+                    <p class="verification-note">L’account e tutti i tuoi annunci verranno eliminati definitivamente. L’operazione non può essere annullata.</p>
+                    <form @submit.prevent="deleteAccount">
+                        <label>Password attuale<input v-model="deleteAccountForm.currentPassword" type="password" autocomplete="current-password" maxlength="72" required></label>
+                        <button v-if="!pendingDeleteAccount" class="danger full" type="submit" :disabled="busy">Elimina definitivamente</button>
+                        <div v-else class="delete-confirmation">
+                            <p>Confermi di voler eliminare definitivamente l’account e tutti i tuoi annunci? L’operazione non può essere annullata.</p>
+                            <div class="confirm-buttons">
+                                <button class="danger" type="submit" :disabled="busy">{{ busy ? 'Eliminazione…' : 'Conferma eliminazione' }}</button>
+                                <button class="secondary" type="button" :disabled="busy" @click="cancelDeleteAccount">Annulla</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </template>
+            <div v-else class="panel login-required"><p class="eyebrow">Accesso richiesto</p><h1>Accedi per gestire il profilo</h1><button class="primary" @click="go('login')">Vai al login</button></div>
+        </section>
+
+        <section v-if="page === 'admin'" class="panel narrow">
+            <template v-if="isAdmin">
+                <p class="eyebrow">Amministrazione</p><h1>Aggiungi reviewer</h1>
+                <p class="verification-note">Inserisci i dati essenziali. Una password temporanea sicura verrà generata e inviata direttamente via email.</p>
+                <form @submit.prevent="createReviewer">
+                    <div class="two-columns">
+                        <label>Nome<input v-model.trim="reviewerForm.name" maxlength="255" required></label>
+                        <label>Cognome<input v-model.trim="reviewerForm.surname" maxlength="255" required></label>
+                    </div>
+                    <label>Email<input v-model.trim="reviewerForm.email" type="email" maxlength="255" required></label>
+                    <button class="primary full" :disabled="busy">{{ busy ? 'Creazione…' : 'Crea reviewer' }}</button>
+                </form>
+            </template>
+            <div v-else class="login-required"><p class="eyebrow">Accesso negato</p><h1>Questa area è riservata agli amministratori</h1></div>
+        </section>
+
+        <section v-if="page === 'search'" class="page-grid">
+            <aside class="panel filters">
+                <p class="eyebrow">Ricerca</p>
+                <h1>Trova il PC giusto</h1>
+                <form @submit.prevent="searchListings">
+                    <label>Tipologia
+                        <select v-model="search.type"><option value="desktop">Desktop</option><option value="laptop">Laptop</option></select>
+                    </label>
+                    <div class="two-columns">
+                        <label>Paese<input v-model.trim="search.country" placeholder="Italia" required></label>
+                        <label>Città<input v-model.trim="search.city" placeholder="Roma" required></label>
+                    </div>
+                    <label>Indirizzo <span class="optional">opzionale</span><input v-model.trim="search.address" placeholder="Via e numero civico"></label>
+                    <label>Parola chiave <span class="optional">opzionale</span><input v-model.trim="search.keyword" maxlength="100" placeholder="es. RTX 4090, ThinkPad, 64 GB"></label>
+                    <div class="two-columns">
+                        <label>Prezzo minimo<input v-model.number="search.minPrice" type="number" min="0" max="100000" step="0.01"></label>
+                        <label>Prezzo massimo<input v-model.number="search.maxPrice" type="number" min="0" max="100000" step="0.01"></label>
+                    </div>
+                    <label>Distanza: <strong>{{ search.distanceKm }} km</strong>
+                        <input v-model.number="search.distanceKm" type="range" min="5" max="250" step="5">
+                    </label>
+                    <button class="primary full" :disabled="busy">{{ busy ? 'Ricerca…' : 'Cerca' }}</button>
+                </form>
+            </aside>
+            <div class="results" :aria-busy="searching">
+                <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ searchAnnouncement }}</p>
+                <div class="results-heading"><div><p class="eyebrow">Risultati</p><h2>{{ resultTitle }}</h2></div><span v-if="searched">{{ listings.length }} {{ listings.length === 1 ? 'annuncio' : 'annunci' }}</span></div>
+                <div v-if="searching" class="empty">Ricerca in corso…</div>
+                <div v-else-if="!searched" class="empty">Imposta i filtri per vedere gli annunci disponibili vicino a te.</div>
+                <div v-else-if="!listings.length" class="empty">Nessun annuncio trovato. Prova ad ampliare distanza o budget.</div>
+                <article v-for="listing in listings" :key="listing.id" class="listing-card clickable-listing" @click="openListing(listing)">
+                    <div class="gallery">
+                        <img v-for="(url, index) in listingPreviewPhotoUrls(listing)" :key="url" :src="url" :alt="'Foto di ' + (listing.brand ? listing.brand + ' ' + listing.model : listing.cpu)" loading="lazy" decoding="async" @error="markPhotoFailed(url)">
+                        <span v-if="!listingPreviewPhotoUrls(listing).length">Nessuna foto</span>
+                        <div class="photo-count" v-if="photoCount(listing) > 1">{{ photoCount(listing) }} foto</div>
+                    </div>
+                    <div class="listing-body">
+                        <div class="listing-top"><span class="pill">{{ listing.type }}</span><strong>€ {{ money(listing.price) }}</strong></div>
+                        <h3>{{ listing.brand ? listing.brand + ' ' + listing.model : listing.cpu }}</h3>
+                        <p>{{ listing.address }}</p>
+                        <dl><div><dt>CPU</dt><dd>{{ listing.cpu }}</dd></div><div><dt>GPU</dt><dd>{{ listing.gpu }}</dd></div><div><dt>RAM</dt><dd>{{ listing.ram }}</dd></div><div><dt>Memoria</dt><dd>{{ listing.memory }}</dd></div></dl>
+                        <p class="seller">{{ listing.sellerName }} · <a :href="'mailto:' + listing.sellerEmail" @click.stop>{{ listing.sellerEmail }}</a><template v-if="listing.sellerPhone"> · <a :href="'tel:' + listing.sellerPhone" @click.stop>{{ listing.sellerPhone }}</a></template></p>
+                        <button class="open-listing" @click.stop="openListing(listing)">Vedi annuncio completo <span aria-hidden="true">→</span></button>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section v-if="page === 'listing-detail'" class="listing-detail">
+            <button class="secondary back-button" @click="closeListing"><span aria-hidden="true">←</span> Torna ai risultati</button>
+            <article class="detail-card">
+                <div class="detail-gallery" :class="{'empty-gallery': !visiblePhotoUrls(selectedListing).length}">
+                    <img v-for="(url, index) in visiblePhotoUrls(selectedListing)" :key="url" :src="url" :alt="'Foto ' + (index + 1) + ' di ' + listingTitle(selectedListing)" decoding="async" @error="markPhotoFailed(url)">
+                    <span v-if="!visiblePhotoUrls(selectedListing).length">Nessuna foto disponibile</span>
+                </div>
+                <div class="detail-content">
+                    <div class="listing-top"><span class="pill">{{ selectedListing.type }}</span><strong>€ {{ money(selectedListing.price) }}</strong></div>
+                    <p class="eyebrow">Annuncio</p>
+                    <h1>{{ listingTitle(selectedListing) }}</h1>
+                    <p class="detail-address">{{ selectedListing.address }}</p>
+                    <dl class="detail-specs">
+                        <div><dt>CPU</dt><dd>{{ selectedListing.cpu }}</dd></div>
+                        <div><dt>GPU</dt><dd>{{ selectedListing.gpu }}</dd></div>
+                        <div><dt>RAM</dt><dd>{{ selectedListing.ram }}</dd></div>
+                        <div><dt>Memoria</dt><dd>{{ selectedListing.memory }}</dd></div>
+                        <template v-if="selectedListing.type === 'desktop'">
+                            <div><dt>Scheda madre</dt><dd>{{ selectedListing.motherboard }}</dd></div>
+                            <div><dt>Alimentatore</dt><dd>{{ selectedListing.power }}</dd></div>
+                            <div><dt>Dissipatore</dt><dd>{{ selectedListing.cpuHeat }}</dd></div>
+                            <div><dt>Case</dt><dd>{{ selectedListing.pcCase }}</dd></div>
+                        </template>
+                        <template v-else>
+                            <div><dt>Marca</dt><dd>{{ selectedListing.brand }}</dd></div>
+                            <div><dt>Modello</dt><dd>{{ selectedListing.model }}</dd></div>
+                            <div><dt>Schermo</dt><dd>{{ selectedListing.screenSize }} pollici</dd></div>
+                        </template>
+                    </dl>
+                    <div class="contact-card">
+                        <p class="eyebrow">Contatta il venditore</p>
+                        <h2>{{ selectedListing.sellerName }}</h2>
+                        <div class="contact-actions">
+                            <a class="primary" :href="'mailto:' + selectedListing.sellerEmail">{{ selectedListing.sellerEmail }}</a>
+                            <a v-if="selectedListing.sellerPhone" class="secondary" :href="'tel:' + selectedListing.sellerPhone">{{ selectedListing.sellerPhone }}</a>
+                        </div>
+                        <div class="report-action" v-if="!user || selectedListing.sellerEmail !== user.email">
+                            <button class="secondary full" @click="reportListing(selectedListing)" :disabled="busy">Segnala annuncio</button>
+                        </div>
+                        <div v-if="user && selectedListing.sellerEmail === user.email" class="management-actions">
+                            <button class="secondary" type="button" :disabled="actingListingId !== null" @click.stop="editListing(selectedListing)">Modifica annuncio</button>
+                            <template v-if="pendingDeleteListingId !== selectedListing.id">
+                                <button class="danger" type="button" :disabled="actingListingId !== null" @click.stop="startDeleteListing(selectedListing)">Elimina annuncio</button>
+                            </template>
+                            <template v-else>
+                                <div class="delete-confirmation">
+                                    <p>Sei sicuro di voler cancellare l'annuncio?</p>
+                                    <div class="confirm-buttons">
+                                        <button class="danger" type="button" :disabled="actingListingId !== null" @click.stop="confirmDeleteListing(selectedListing)">{{ actingListingId === selectedListing.id ? 'Eliminazione…' : 'Conferma eliminazione' }}</button>
+                                        <button class="secondary" type="button" :disabled="actingListingId !== null" @click.stop="cancelDeleteListing">Annulla</button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <section v-if="page === 'sell'" class="panel sell-panel">
+            <template v-if="isUser">
+                <p class="eyebrow">{{ isEditing ? 'Modifica annuncio' : 'Nuovo annuncio' }}</p>
+                <h1>{{ isEditing ? 'Aggiorna i dati del tuo PC' : 'Metti in vendita il tuo PC' }}</h1>
+                <form class="sell-form" @submit.prevent="submitListing">
+                    <div class="form-section">
+                        <h2>Informazioni principali</h2>
+                        <div class="two-columns">
+                            <label>Tipologia<select v-model="listing.type"><option value="desktop">Desktop</option><option value="laptop">Laptop</option></select></label>
+                            <label>Prezzo (€)<input v-model.number="listing.price" type="number" min="0.01" max="100000" step="0.01" required></label>
+                        </div>
+                        <div class="two-columns">
+                            <label>Paese<input v-model.trim="listing.country" placeholder="Italia" required></label>
+                            <label>Città<input v-model.trim="listing.city" placeholder="Roma" required></label>
+                        </div>
+                        <label>Indirizzo <span class="optional">opzionale</span><input v-model.trim="listing.address" placeholder="Via e numero civico"></label>
+                        <label class="check-option"><input v-model="listing.showPhone" type="checkbox" :disabled="!user.phone">Mostra il mio numero di telefono nell’annuncio</label>
+                        <small v-if="!user.phone">Per mostrare il telefono, aggiungilo prima nella pagina Profilo.</small>
+                    </div>
+                    <div class="form-section">
+                        <h2>Configurazione</h2>
+                        <div v-if="listing.type === 'laptop'" class="three-columns">
+                            <label>Marca<input v-model.trim="listing.brand" required></label><label>Modello<input v-model.trim="listing.model" required></label><label>Schermo (pollici)<input v-model.number="listing.screenSize" type="number" min="5" max="30" step="0.1" required></label>
+                        </div>
+                        <div class="two-columns"><label>CPU<input v-model.trim="listing.cpu" required></label><label>GPU<input v-model.trim="listing.gpu" required></label><label>RAM<input v-model.trim="listing.ram" required></label><label>Memoria<input v-model.trim="listing.memory" required></label></div>
+                        <div v-if="listing.type === 'desktop'" class="two-columns"><label>Scheda madre<input v-model.trim="listing.motherboard" required></label><label>Alimentatore<input v-model.trim="listing.power" required></label><label>Dissipatore<input v-model.trim="listing.cpuHeat" required></label><label>Case<input v-model.trim="listing.pcCase" required></label></div>
+                    </div>
+                    <div class="form-section">
+                        <h2>Foto</h2>
+                        <small>Puoi aggiungere fino a 3 immagini JPEG o PNG (max 5 MB ciascuna), una alla volta: seleziona la prima foto, poi la seconda e infine la terza. Non serve, e su smartphone è sconsigliato, sceglierle tutte insieme dalla galleria.</small>
+                        <div class="photo-slots">
+                            <div v-for="index in 3" :key="index" class="photo-slot" :class="{filled: slotFilled(index - 1)}">
+                                <img v-if="slotFilled(index - 1)" :src="slotPreviewUrl(index - 1)" :alt="'Anteprima foto ' + index">
+                                <span v-else class="slot-placeholder">Foto {{ index }}</span>
+                                <div class="slot-actions">
+                                    <label v-if="!slotFilled(index - 1) && (index - 1) === firstEmptySlotIndex()" class="secondary slot-button">
+                                        Aggiungi foto {{ index }}
+                                        <input type="file" accept="image/jpeg,image/png" class="sr-only" @change="pickPhoto(index - 1, $event)">
+                                    </label>
+                                    <template v-else-if="slotFilled(index - 1)">
+                                        <label class="secondary slot-button">
+                                            Sostituisci
+                                            <input type="file" accept="image/jpeg,image/png" class="sr-only" @change="pickPhoto(index - 1, $event)">
+                                        </label>
+                                        <button v-if="selectedPhotos[index - 1]" type="button" class="secondary slot-button" @click="removeStagedPhoto(index - 1)">Annulla</button>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="primary" :disabled="busy">{{ busy ? (isEditing ? 'Salvataggio…' : 'Pubblicazione…') : (isEditing ? 'Salva modifiche' : 'Pubblica annuncio') }}</button>
+                    <button v-if="isEditing" type="button" class="secondary" :disabled="busy" @click="cancelEdit">Annulla</button>
+                </form>
+            </template>
+            <div v-else-if="!user" class="login-required"><p class="eyebrow">Accesso richiesto</p><h1>Accedi per pubblicare un annuncio</h1><button class="primary" @click="go('login')">Vai al login</button></div>
+            <div v-else class="login-required"><p class="eyebrow">Funzione non disponibile</p><h1>Gli account revisore non possono pubblicare annunci</h1><button class="primary" @click="openReview">Vai alla revisione</button></div>
+        </section>
+
+        <section v-if="page === 'mine'" class="panel management-panel" :aria-busy="privateLoading">
+            <template v-if="isUser">
+                <p class="eyebrow">Area personale</p><h1>I miei annunci</h1>
+                <div v-if="privateLoading" class="empty">Caricamento annunci…</div>
+                <div v-else-if="!myListings.length" class="empty">Non hai annunci attivi.</div>
+                <div v-else class="management-list">
+                    <article v-for="listing in myListings" :key="listing.id" class="listing-card clickable-listing" @click="openListing(listing)">
+                        <div class="gallery">
+                            <img v-for="(url, index) in listingPreviewPhotoUrls(listing)" :key="url" :src="url" :alt="'Foto dell\'annuncio ' + listing.id" loading="lazy" decoding="async" @error="markPhotoFailed(url)">
+                            <span v-if="!listingPreviewPhotoUrls(listing).length">Nessuna foto</span>
+                            <div class="photo-count" v-if="photoCount(listing) > 1">{{ photoCount(listing) }} foto</div>
+                        </div>
+                        <div class="listing-body">
+                            <div class="listing-top"><span class="pill">{{ listing.type }}</span><strong>€ {{ money(listing.price) }}</strong></div>
+                            <div class="report-badge" v-if="listing.reports > 0">
+                                ⚠️ {{ listing.reports }} {{ listing.reports === 1 ? 'segnalazione' : 'segnalazioni' }}
+                            </div>
+                            <h3>{{ listing.brand ? listing.brand + ' ' + listing.model : listing.cpu }}</h3>
+                            <p>{{ listing.address }}</p>
+                            <dl><div><dt>CPU</dt><dd>{{ listing.cpu }}</dd></div><div><dt>GPU</dt><dd>{{ listing.gpu }}</dd></div><div><dt>RAM</dt><dd>{{ listing.ram }}</dd></div><div><dt>Memoria</dt><dd>{{ listing.memory }}</dd></div></dl>
+                            <p class="seller"><a :href="'mailto:' + listing.sellerEmail">{{ listing.sellerEmail }}</a><template v-if="listing.sellerPhone"> · <a :href="'tel:' + listing.sellerPhone">{{ listing.sellerPhone }}</a></template></p>
+                            <div class="management-actions">
+                                <template v-if="pendingDeleteListingId !== listing.id">
+                                    <button class="danger" :disabled="actingListingId !== null" :aria-label="'Elimina annuncio ' + listing.id" @click.stop="startDeleteListing(listing)">{{ actingListingId === listing.id ? 'Eliminazione…' : 'Elimina annuncio' }}</button>
+                                </template>
+                                <template v-else>
+                                    <div class="delete-confirmation inline">
+                                        <p>Sei sicuro di voler eliminare l'annuncio?</p>
+                                        <div class="confirm-buttons">
+                                            <button class="danger" type="button" :disabled="actingListingId !== null" @click.stop="confirmDeleteListing(listing)">{{ actingListingId === listing.id ? 'Eliminazione…' : 'Conferma' }}</button>
+                                            <button class="secondary" type="button" :disabled="actingListingId !== null" @click.stop="cancelDeleteListing">Annulla</button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </template>
+            <div v-else class="login-required"><p class="eyebrow">Accesso negato</p><h1>Questa area è riservata agli utenti</h1></div>
+        </section>
+
+        <section v-if="page === 'review'" class="panel management-panel" :aria-busy="privateLoading">
+            <template v-if="isReviewer">
+                <p class="eyebrow">Content reviewer</p><h1>Revisione annunci</h1>
+                <div v-if="privateLoading" class="empty">Caricamento annunci…</div>
+                <div v-else-if="!reviewListings.length" class="empty">Non ci sono annunci attivi da revisionare.</div>
+                <div v-else class="management-list">
+                    <article v-for="listing in reviewListings" :key="listing.id" class="listing-card">
+                        <div class="gallery">
+                            <img v-for="(url, index) in listingPreviewPhotoUrls(listing)" :key="url" :src="url" :alt="'Foto dell\'annuncio ' + listing.id" loading="lazy" decoding="async" @error="markPhotoFailed(url)">
+                            <span v-if="!listingPreviewPhotoUrls(listing).length">Nessuna foto</span>
+                            <div class="photo-count" v-if="photoCount(listing) > 1">{{ photoCount(listing) }} foto</div>
+                        </div>
+                        <div class="listing-body">
+                            <div class="listing-top"><span class="pill">{{ listing.type }}</span><strong>€ {{ money(listing.price) }}</strong></div>
+                            <div class="report-badge" v-if="listing.reports > 0">
+                                ⚠️ {{ listing.reports }} {{ listing.reports === 1 ? 'segnalazione' : 'segnalazioni' }}
+                            </div>
+                            <h3>{{ listing.brand ? listing.brand + ' ' + listing.model : listing.cpu }}</h3>
+                            <p>{{ listing.address }}</p>
+                            <dl><div><dt>CPU</dt><dd>{{ listing.cpu }}</dd></div><div><dt>GPU</dt><dd>{{ listing.gpu }}</dd></div><div><dt>RAM</dt><dd>{{ listing.ram }}</dd></div><div><dt>Memoria</dt><dd>{{ listing.memory }}</dd></div></dl>
+                            <p class="seller">{{ listing.sellerName }} · <a :href="'mailto:' + listing.sellerEmail">{{ listing.sellerEmail }}</a><template v-if="listing.sellerPhone"> · <a :href="'tel:' + listing.sellerPhone">{{ listing.sellerPhone }}</a></template></p>
+                            <div class="management-actions">
+                                <template v-if="pendingReviewListingId !== listing.id">
+                                    <button class="danger" :disabled="actingListingId !== null" :aria-label="'Rimuovi annuncio ' + listing.id" @click="startReviewAction(listing, false)">Rimuovi annuncio</button>
+                                    <button class="warning" :disabled="actingListingId !== null" :aria-label="'Rimuovi annuncio ' + listing.id + ' e blocca il venditore'" @click="startReviewAction(listing, true)">Rimuovi e blocca utente</button>
+                                </template>
+                                <div v-else class="delete-confirmation inline">
+                                    <p>{{ pendingReviewBlockUser ? ('Rimuovere l’annuncio e bloccare ' + listing.sellerEmail + '? L’utente non potrà più accedere.') : 'Rimuovere questo annuncio?' }}</p>
+                                    <div class="confirm-buttons">
+                                        <button :class="pendingReviewBlockUser ? 'warning' : 'danger'" type="button" :disabled="actingListingId !== null" @click="confirmReviewAction(listing)">{{ actingListingId === listing.id ? 'Rimozione…' : 'Conferma' }}</button>
+                                        <button class="secondary" type="button" :disabled="actingListingId !== null" @click="cancelReviewAction">Annulla</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </template>
+            <div v-else class="login-required"><p class="eyebrow">Accesso negato</p><h1>Questa area è riservata ai revisori</h1></div>
+        </section>
+    </main>
+
+    <div v-if="message" class="toast" :class="message.type" :role="message.type === 'error' ? 'alert' : 'status'" :aria-live="message.type === 'error' ? 'assertive' : 'polite'" aria-atomic="true">{{ message.text }}<button @click="message = null" aria-label="Chiudi notifica">×</button></div>
+</div>
+<script src="/webjars/vue/3.5.13/dist/vue.global.prod.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
