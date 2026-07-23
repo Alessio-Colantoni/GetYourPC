@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: getyourpc
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: JDBC_DATABASE_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: GEOAPIFY_API_KEY
+        sync: false
+      - key: MAILJET_API_KEY
+        sync: false
+      - key: MAILJET_SECRET_KEY
+        sync: false
+      - key: MAILJET_SENDER_EMAIL
+        sync: false
+      - key: MAILJET_SENDER_NAME
+        value: "GetYourPC"
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: BOOTSTRAP_ACCOUNT_ENABLED
+        value: "false"
